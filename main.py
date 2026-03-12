@@ -1,13 +1,18 @@
-import tkinter as tk 
-from tkinter import filedialog 
-import struct 
-import os, cv2 
+import tkinter as tk
+from tkinter import filedialog
+import struct
+import os
+import cv2
+from PIL import Image
+import matplotlib.pyplot as plt
+
+LOADED_PICTURE = ""
+
 
 def read_bmp_24bit(file_path): 
-
     """ 
-    Reads a 24‑bit uncompressed BMP file and returns a 3D list of RGB values. 
-    The list has the structure: matrix[y][x] = [R, G, B]  (top‑to‑bottom, left‑to‑right). 
+    Reads a 24-bit uncompressed BMP file and returns a 3D list of RGB values. 
+    The list has the structure: matrix[y][x] = [R, G, B]  (top-to-bottom, left-to-right). 
     Raises ValueError if the BMP format is not supported. 
     """ 
     with open(file_path, 'rb') as f: 
@@ -34,7 +39,7 @@ def read_bmp_24bit(file_path):
         image_size = struct.unpack('<I', info_header[20:24])[0] 
   
         if bit_count != 24: 
-            raise ValueError(f"Only 24‑bit BMP supported, got {bit_count}‑bit") 
+            raise ValueError(f"Only 24-bit BMP supported, got {bit_count}-bit") 
         if compression != 0:  # BI_RGB 
             raise ValueError("Only uncompressed BMP supported") 
   
@@ -65,93 +70,67 @@ def read_bmp_24bit(file_path):
         return pixels  # matrix[y][x] = [R,G,B] 
 
 def open_image_and_create_matrix(): 
-    """ 
-    Opens a file dialog to select a BMP image, reads it, and returns a matrix 
-    (list of lists of RGB values). Returns None if no file is selected or an error occurs. 
-    """ 
-    root = tk.Tk() 
-    root.withdraw() 
+    global LOADED_PICTURE
 
     file_path = filedialog.askopenfilename( 
         title="Open BMP Image", 
         filetypes=[("BMP files", "*.bmp"), ("All files", "*.*")] 
     ) 
+  
+    if not file_path: 
+        print("No file selected.") 
+        return None 
+  
+    try: 
+        LOADED_PICTURE = read_bmp_24bit(file_path) 
+        print(f"Image loaded from: {file_path}") 
+        print(f"Matrix dimensions: {len(LOADED_PICTURE)} rows x {len(LOADED_PICTURE[0])} columns") 
+        print(f"Example pixel at (0,0): R={LOADED_PICTURE[0][0][0]}, G={LOADED_PICTURE[0][0][1]}, B={LOADED_PICTURE[0][0][2]}") 
+    except Exception as e: 
+        print(f"Error reading BMP: {e}") 
+        return None 
 
+def open_image_cv2():
+    global LOADED_PICTURE
+    file_path = filedialog.askopenfilename( 
+        title="Open Image", 
+        filetypes=[("Image files", "*.bmp *.png *.jpg *.jpeg"), ("All files", "*.*")] 
+    ) 
     if file_path:  
-        image = cv2.imread(file_path)  
-
-        if image is None:  
+        LOADED_PICTURE = cv2.imread(file_path)  
+        if LOADED_PICTURE is None:  
             print("Error: Could not read the image.")  
             return None  
-
         print(f"Image loaded from: {file_path}")  
-        print(f"Matrix shape (height, width, channels): {image.shape}")  
-
-        return image  
-
+        print(f"Matrix shape (height, width, channels): {LOADED_PICTURE.shape}")  
     else:  
         print("No file selected.")  
         return None  
 
 
-if __name__ == "__main__": 
-    img_matrix = open_image_and_create_matrix() 
-    if img_matrix is not None: 
-        # Now you can work with the matrix (e.g., modify pixels, process, etc.) 
-        # To display the image (requires matplotlib): 
-        cv2.imshow("Loaded Image", img_matrix) 
-        cv2.waitKey(0) 
-        cv2.destroyAllWindows() 
+def open_image():
+    global LOADED_PICTURE
+    if LOADED_PICTURE is not None: 
+        plt.imshow(LOADED_PICTURE)
+        plt.axis("off")
+        plt.show()
 
-        # import matplotlib.pyplot as plt 
-        # plt.imshow(img_matrix)   # expects RGB order 
-        # plt.axis('off') 
-        # plt.show() 
+def main():
+    root = tk.Tk()
+    root.title("Image Processing App")
+    root.geometry("350x260")
 
+    # The 4 buttons request
+    btn_original = tk.Button(root, text="Deschide original", command=open_image_and_create_matrix, width=25)
+    btn_original.pack(pady=10)
 
-# if file_path:  
+    btn_cv2 = tk.Button(root, text="Deschide cu cv2", command=open_image_cv2, width=25)
+    btn_cv2.pack(pady=10)
 
-#         # Read the image using OpenCV (returns a NumPy array, BGR order by default)  
+    btn_save = tk.Button(root, text="Deschide imaginea", command=open_image, width=25)
+    btn_save.pack(pady=10)
 
-#         image = cv2.imread(file_path)  
+    root.mainloop()
 
-#         if image is None:  
-
-#             print("Error: Could not read the image.")  
-
-#             return None  
-
-#         print(f"Image loaded from: {file_path}")  
-
-#         print(f"Matrix shape (height, width, channels): {image.shape}")  
-
-#         return image  
-
-#     else:  
-
-#         print("No file selected.")  
-
-#         return None  
-
-  
-
-#  ...... 
-
-  
-
-#    if img is not None: 
-
-#         # Display the image (optional) 
-
-#         cv2.imshow("Loaded Image", img) 
-
-#         cv2.waitKey(0) 
-
-#         cv2.destroyAllWindows() 
-
-# def main():
-#     print("Hello from procesarea-imaginilor!")
-
-
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
