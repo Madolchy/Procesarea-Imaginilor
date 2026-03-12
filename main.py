@@ -3,11 +3,6 @@ from tkinter import filedialog
 import struct
 from PIL import Image, ImageTk
 
-LOADED_PICTURE = None
-GRAYSCALE_PICTURE = None
-PHOTO_ORIGINAL = None
-PHOTO_GRAYSCALE = None
-
 def read_bmp_24bit(file_path): 
     with open(file_path, 'rb') as f: 
         file_header = f.read(14) 
@@ -55,78 +50,113 @@ def convert_matrix_to_photo(rgb_matrix):
             img.putpixel((x, y), (r, g, b))
     return ImageTk.PhotoImage(img)
 
-def open_image(lbl_original, lbl_grayscale):
-    global LOADED_PICTURE, GRAYSCALE_PICTURE, PHOTO_ORIGINAL, PHOTO_GRAYSCALE
-    
-    file_path = filedialog.askopenfilename( 
-        title="Open BMP Image", 
-        filetypes=[("BMP files", "*.bmp")] 
-    ) 
-    
-    if file_path:
-        try:
-            LOADED_PICTURE = read_bmp_24bit(file_path)
-            GRAYSCALE_PICTURE = None
-            PHOTO_GRAYSCALE = None
+class ImageProcessingApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Image Processing App")
+        self.root.geometry("800x400")
+        
+        self.loaded_picture = None
+        self.processed_picture = None
+        self.photo_original = None
+        self.photo_processed = None
+        
+        self.setup_gui()
+        
+    def setup_gui(self):
+        frame_left = tk.Frame(self.root, width=400, height=400, bg="white")
+        frame_left.pack(side="left", fill="both", expand=True)
+        frame_left.pack_propagate(False)
+        
+        frame_right = tk.Frame(self.root, width=400, height=400, bg="white")
+        frame_right.pack(side="right", fill="both", expand=True)
+        frame_right.pack_propagate(False)
+        
+        self.lbl_original = tk.Label(frame_left, bg="white")
+        self.lbl_original.pack(expand=True)
+        
+        self.lbl_processed = tk.Label(frame_right, bg="white")
+        self.lbl_processed.pack(expand=True)
+        
+        menu_bar = tk.Menu(self.root)
+        
+        file_menu = tk.Menu(menu_bar, tearoff=0)
+        file_menu.add_command(label="Open", command=self.open_image)
+        menu_bar.add_cascade(label="File", menu=file_menu)
+        
+        operations_menu = tk.Menu(menu_bar, tearoff=0)
+        operations_menu.add_command(label="Grayscale", command=self.apply_grayscale)
+        operations_menu.add_command(label="CMYK", command=self.apply_cmyk)
+        menu_bar.add_cascade(label="Operations", menu=operations_menu)
+        
+        self.root.config(menu=menu_bar)
+
+    def open_image(self):
+        file_path = filedialog.askopenfilename( 
+            title="Open BMP Image", 
+            filetypes=[("BMP files", "*.bmp")] 
+        ) 
+        
+        if file_path:
+            try:
+                self.loaded_picture = read_bmp_24bit(file_path)
+                self.processed_picture = None
+                self.photo_processed = None
+                
+                self.photo_original = convert_matrix_to_photo(self.loaded_picture)
+                self.lbl_original.config(image=self.photo_original)
+                self.lbl_processed.config(image='')
+            except Exception as e:
+                print(f"Error loading image: {e}")
+
+    def apply_grayscale(self):
+        if self.loaded_picture is None:
+            return
             
-            PHOTO_ORIGINAL = convert_matrix_to_photo(LOADED_PICTURE)
-            lbl_original.config(image=PHOTO_ORIGINAL)
-            lbl_grayscale.config(image='')
-        except Exception as e:
-            print(f"Error loading image: {e}")
-
-def apply_grayscale(lbl_grayscale):
-    global LOADED_PICTURE, GRAYSCALE_PICTURE, PHOTO_GRAYSCALE
-    
-    if LOADED_PICTURE is None:
-        return
+        height = len(self.loaded_picture)
+        width = len(self.loaded_picture[0])
         
-    height = len(LOADED_PICTURE)
-    width = len(LOADED_PICTURE[0])
-    
-    GRAYSCALE_PICTURE = []
-    for y in range(height):
-        row = []
-        for x in range(width):
-            r, g, b = LOADED_PICTURE[y][x]
-            gray = int((r + g + b) / 3)
-            row.append([gray, gray, gray])
-        GRAYSCALE_PICTURE.append(row)
-        
-    PHOTO_GRAYSCALE = convert_matrix_to_photo(GRAYSCALE_PICTURE)
-    lbl_grayscale.config(image=PHOTO_GRAYSCALE)
+        self.processed_picture = []
+        for y in range(height):
+            row = []
+            for x in range(width):
+                r, g, b = self.loaded_picture[y][x]
+                gray = int((r + g + b) / 3)
+                row.append([gray, gray, gray])
+            self.processed_picture.append(row)
+            
+        self.photo_processed = convert_matrix_to_photo(self.processed_picture)
+        self.lbl_processed.config(image=self.photo_processed)
 
-def setup_gui():
-    root = tk.Tk()
-    root.title("Image Processing App")
-    root.geometry("800x400")
-    
-    frame_left = tk.Frame(root, width=400, height=400, bg="white")
-    frame_left.pack(side="left", fill="both", expand=True)
-    frame_left.pack_propagate(False)
-    
-    frame_right = tk.Frame(root, width=400, height=400, bg="white")
-    frame_right.pack(side="right", fill="both", expand=True)
-    frame_right.pack_propagate(False)
-    
-    lbl_original = tk.Label(frame_left, bg="white")
-    lbl_original.pack(expand=True)
-    
-    lbl_grayscale = tk.Label(frame_right, bg="white")
-    lbl_grayscale.pack(expand=True)
-    
-    menu_bar = tk.Menu(root)
-    
-    file_menu = tk.Menu(menu_bar, tearoff=0)
-    file_menu.add_command(label="Open", command=lambda: open_image(lbl_original, lbl_grayscale))
-    menu_bar.add_cascade(label="File", menu=file_menu)
-    
-    operations_menu = tk.Menu(menu_bar, tearoff=0)
-    operations_menu.add_command(label="Grayscale", command=lambda: apply_grayscale(lbl_grayscale))
-    menu_bar.add_cascade(label="Operations", menu=operations_menu)
-    
-    root.config(menu=menu_bar)
-    root.mainloop()
+    def apply_cmyk(self):
+        if self.loaded_picture is None:
+            return
+            
+        height = len(self.loaded_picture)
+        width = len(self.loaded_picture[0])
+        
+        self.processed_picture = []
+        for y in range(height):
+            row = []
+            for x in range(width):
+                r, g, b = self.loaded_picture[y][x]
+                
+                c_val = 1 - (r / 255)
+                m_val = 1 - (g / 255)
+                y_val = 1 - (b / 255)
+                
+                c_pixel = int(c_val * 255)
+                m_pixel = int(m_val * 255)
+                y_pixel = int(y_val * 255)
+                
+                row.append([c_pixel, m_pixel, y_pixel])
+                
+            self.processed_picture.append(row)
+            
+        self.photo_processed = convert_matrix_to_photo(self.processed_picture)
+        self.lbl_processed.config(image=self.photo_processed)
 
 if __name__ == "__main__":
-    setup_gui()
+    root = tk.Tk()
+    app = ImageProcessingApp(root)
+    root.mainloop()
