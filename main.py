@@ -1,136 +1,132 @@
 import tkinter as tk
 from tkinter import filedialog
 import struct
-import os
-import cv2
-from PIL import Image
-import matplotlib.pyplot as plt
+from PIL import Image, ImageTk
 
-LOADED_PICTURE = ""
-
+LOADED_PICTURE = None
+GRAYSCALE_PICTURE = None
+PHOTO_ORIGINAL = None
+PHOTO_GRAYSCALE = None
 
 def read_bmp_24bit(file_path): 
-    """ 
-    Reads a 24-bit uncompressed BMP file and returns a 3D list of RGB values. 
-    The list has the structure: matrix[y][x] = [R, G, B]  (top-to-bottom, left-to-right). 
-    Raises ValueError if the BMP format is not supported. 
-    """ 
     with open(file_path, 'rb') as f: 
-        # Read BITMAPFILEHEADER (14 bytes) 
         file_header = f.read(14) 
-        if len(file_header) < 14: 
-            raise ValueError("File too small to be a BMP") 
-        signature = file_header[0:2] 
-        if signature != b'BM': 
-            raise ValueError("Not a BMP file (invalid signature)") 
+        if len(file_header) < 14 or file_header[0:2] != b'BM': 
+            raise ValueError("Not a valid BMP file") 
   
-        file_size = struct.unpack('<I', file_header[2:6])[0] 
         data_offset = struct.unpack('<I', file_header[10:14])[0] 
         info_header = f.read(40) 
-        if len(info_header) < 40: 
-            raise ValueError("Incomplete BMP info header") 
-
-        header_size = struct.unpack('<I', info_header[0:4])[0] 
+        
         width = struct.unpack('<i', info_header[4:8])[0] 
         height = struct.unpack('<i', info_header[8:12])[0] 
-        planes = struct.unpack('<H', info_header[12:14])[0] 
         bit_count = struct.unpack('<H', info_header[14:16])[0] 
-        compression = struct.unpack('<I', info_header[16:20])[0] 
-        image_size = struct.unpack('<I', info_header[20:24])[0] 
-  
+        
         if bit_count != 24: 
-            raise ValueError(f"Only 24-bit BMP supported, got {bit_count}-bit") 
-        if compression != 0:  # BI_RGB 
-            raise ValueError("Only uncompressed BMP supported") 
-  
+            raise ValueError("Only 24-bit BMP supported") 
+            
         bottom_up = height > 0 
         abs_height = abs(height) 
         row_size = ((width * 3 + 3) // 4) * 4 
-
         f.seek(data_offset) 
   
         pixels = [] 
         for _ in range(abs_height): 
             row_data = f.read(row_size) 
-            if len(row_data) < row_size: 
-                raise ValueError("Unexpected end of file") 
-
             row_pixels = [] 
             for x in range(width): 
                 b = row_data[x*3] 
                 g = row_data[x*3 + 1] 
                 r = row_data[x*3 + 2] 
                 row_pixels.append([r, g, b]) 
-
             pixels.append(row_pixels) 
-
+            
         if bottom_up: 
             pixels.reverse() 
   
-        return pixels  # matrix[y][x] = [R,G,B] 
+        return pixels
 
-def open_image_and_create_matrix(): 
-    global LOADED_PICTURE
+def convert_matrix_to_photo(rgb_matrix):
+    height = len(rgb_matrix)
+    width = len(rgb_matrix[0])
+    img = Image.new("RGB", (width, height))
+    for y in range(height):
+        for x in range(width):
+            r, g, b = rgb_matrix[y][x]
+            img.putpixel((x, y), (r, g, b))
+    return ImageTk.PhotoImage(img)
 
+def open_image(lbl_original, lbl_grayscale):
+    global LOADED_PICTURE, GRAYSCALE_PICTURE, PHOTO_ORIGINAL, PHOTO_GRAYSCALE
+    
     file_path = filedialog.askopenfilename( 
         title="Open BMP Image", 
-        filetypes=[("BMP files", "*.bmp"), ("All files", "*.*")] 
+        filetypes=[("BMP files", "*.bmp")] 
     ) 
-  
-    if not file_path: 
-        print("No file selected.") 
-        return None 
-  
-    try: 
-        LOADED_PICTURE = read_bmp_24bit(file_path) 
-        print(f"Image loaded from: {file_path}") 
-        print(f"Matrix dimensions: {len(LOADED_PICTURE)} rows x {len(LOADED_PICTURE[0])} columns") 
-        print(f"Example pixel at (0,0): R={LOADED_PICTURE[0][0][0]}, G={LOADED_PICTURE[0][0][1]}, B={LOADED_PICTURE[0][0][2]}") 
-    except Exception as e: 
-        print(f"Error reading BMP: {e}") 
-        return None 
+    
+    if file_path:
+        try:
+            LOADED_PICTURE = read_bmp_24bit(file_path)
+            GRAYSCALE_PICTURE = None
+            PHOTO_GRAYSCALE = None
+            
+            PHOTO_ORIGINAL = convert_matrix_to_photo(LOADED_PICTURE)
+            lbl_original.config(image=PHOTO_ORIGINAL)
+            lbl_grayscale.config(image='')
+        except Exception as e:
+            print(f"Error loading image: {e}")
 
-def open_image_cv2():
-    global LOADED_PICTURE
-    file_path = filedialog.askopenfilename( 
-        title="Open Image", 
-        filetypes=[("Image files", "*.bmp *.png *.jpg *.jpeg"), ("All files", "*.*")] 
-    ) 
-    if file_path:  
-        LOADED_PICTURE = cv2.imread(file_path)  
-        if LOADED_PICTURE is None:  
-            print("Error: Could not read the image.")  
-            return None  
-        print(f"Image loaded from: {file_path}")  
-        print(f"Matrix shape (height, width, channels): {LOADED_PICTURE.shape}")  
-    else:  
-        print("No file selected.")  
-        return None  
+def apply_grayscale(lbl_grayscale):
+    global LOADED_PICTURE, GRAYSCALE_PICTURE, PHOTO_GRAYSCALE
+    
+    if LOADED_PICTURE is None:
+        return
+        
+    height = len(LOADED_PICTURE)
+    width = len(LOADED_PICTURE[0])
+    
+    GRAYSCALE_PICTURE = []
+    for y in range(height):
+        row = []
+        for x in range(width):
+            r, g, b = LOADED_PICTURE[y][x]
+            gray = int((r + g + b) / 3)
+            row.append([gray, gray, gray])
+        GRAYSCALE_PICTURE.append(row)
+        
+    PHOTO_GRAYSCALE = convert_matrix_to_photo(GRAYSCALE_PICTURE)
+    lbl_grayscale.config(image=PHOTO_GRAYSCALE)
 
-
-def open_image():
-    global LOADED_PICTURE
-    if LOADED_PICTURE is not None: 
-        plt.imshow(LOADED_PICTURE)
-        plt.axis("off")
-        plt.show()
-
-def main():
+def setup_gui():
     root = tk.Tk()
     root.title("Image Processing App")
-    root.geometry("350x260")
-
-    # The 4 buttons request
-    btn_original = tk.Button(root, text="Deschide original", command=open_image_and_create_matrix, width=25)
-    btn_original.pack(pady=10)
-
-    btn_cv2 = tk.Button(root, text="Deschide cu cv2", command=open_image_cv2, width=25)
-    btn_cv2.pack(pady=10)
-
-    btn_save = tk.Button(root, text="Deschide imaginea", command=open_image, width=25)
-    btn_save.pack(pady=10)
-
+    root.geometry("800x400")
+    
+    frame_left = tk.Frame(root, width=400, height=400, bg="white")
+    frame_left.pack(side="left", fill="both", expand=True)
+    frame_left.pack_propagate(False)
+    
+    frame_right = tk.Frame(root, width=400, height=400, bg="white")
+    frame_right.pack(side="right", fill="both", expand=True)
+    frame_right.pack_propagate(False)
+    
+    lbl_original = tk.Label(frame_left, bg="white")
+    lbl_original.pack(expand=True)
+    
+    lbl_grayscale = tk.Label(frame_right, bg="white")
+    lbl_grayscale.pack(expand=True)
+    
+    menu_bar = tk.Menu(root)
+    
+    file_menu = tk.Menu(menu_bar, tearoff=0)
+    file_menu.add_command(label="Open", command=lambda: open_image(lbl_original, lbl_grayscale))
+    menu_bar.add_cascade(label="File", menu=file_menu)
+    
+    operations_menu = tk.Menu(menu_bar, tearoff=0)
+    operations_menu.add_command(label="Grayscale", command=lambda: apply_grayscale(lbl_grayscale))
+    menu_bar.add_cascade(label="Operations", menu=operations_menu)
+    
+    root.config(menu=menu_bar)
     root.mainloop()
 
 if __name__ == "__main__":
-    main()
+    setup_gui()
