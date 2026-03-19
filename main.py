@@ -87,12 +87,12 @@ class ImageProcessingApp:
         menu_bar.add_cascade(label="File", menu=file_menu)
         
         operations_menu = tk.Menu(menu_bar, tearoff=0)
-        operations_menu.add_command(label="Grayscale", command=self.apply_grayscale)
-        operations_menu.add_command(label="CMYK", command=self.apply_cmyk)
-        operations_menu.add_command(label="YUV", command=self.apply_yuv)
-        operations_menu.add_command(label="YCbCr", command=self.apply_ycbcr)
+        operations_menu.add_command(label="Grayscale", command=lambda: self.process_pixels(self.grayscale_pixel))
+        operations_menu.add_command(label="CMYK", command=lambda: self.process_pixels(self.cmyk_pixel))
+        operations_menu.add_command(label="YUV", command=lambda: self.process_pixels(self.yuv_pixel))
+        operations_menu.add_command(label="YCbCr", command=lambda: self.process_pixels(self.ycbcr_pixel))
         operations_menu.add_command(label="inverse", command=self.apply_inverse)
-        operations_menu.add_command(label="binarize", command=self.apply_binarize)
+        operations_menu.add_command(label="binarize", command=lambda: self.process_pixels(self.binarize_pixel))
         menu_bar.add_cascade(label="Operations", menu=operations_menu)
         
         self.root.config(menu=menu_bar)
@@ -115,54 +115,7 @@ class ImageProcessingApp:
             except Exception as e:
                 print(f"Error loading image: {e}")
 
-    def apply_grayscale(self):
-        if self.loaded_picture is None:
-            return
-            
-        height = len(self.loaded_picture)
-        width = len(self.loaded_picture[0])
-        
-        self.processed_picture = []
-        for y in range(height):
-            row = []
-            for x in range(width):
-                r, g, b = self.loaded_picture[y][x]
-                gray = int((r + g + b) / 3)
-                row.append([gray, gray, gray])
-            self.processed_picture.append(row)
-            
-        self.photo_processed = convert_matrix_to_photo(self.processed_picture)
-        self.lbl_processed.config(image=self.photo_processed)
-
-    def apply_cmyk(self):
-        if self.loaded_picture is None:
-            return
-            
-        height = len(self.loaded_picture)
-        width = len(self.loaded_picture[0])
-        
-        self.processed_picture = []
-        for y in range(height):
-            row = []
-            for x in range(width):
-                r, g, b = self.loaded_picture[y][x]
-                
-                c_val = 1 - (r / 255)
-                m_val = 1 - (g / 255)
-                y_val = 1 - (b / 255)
-                
-                c_pixel = int(c_val * 255)
-                m_pixel = int(m_val * 255)
-                y_pixel = int(y_val * 255)
-                
-                row.append([c_pixel, m_pixel, y_pixel])
-                
-            self.processed_picture.append(row)
-            
-        self.photo_processed = convert_matrix_to_photo(self.processed_picture)
-        self.lbl_processed.config(image=self.photo_processed)
-
-    def apply_yuv(self):
+    def process_pixels(self, pixel_func):
         if self.loaded_picture is None:
             return
             
@@ -174,49 +127,41 @@ class ImageProcessingApp:
             row = []
             for x in range(width):
                 r, g, b = self.loaded_picture[y_coord][x]
-                
-                y_val = 0.3 * r + 0.6 * g + 0.1 * b
-                u_val = 0.74 * (r - y_val) + 0.27 * (b - y_val)
-                v_val = 0.48 * (r - y_val) + 0.41 * (b - y_val)
-                
-                y_pixel = max(0, min(255, int(y_val)))
-                u_pixel = max(0, min(255, int(u_val + 128))) 
-                v_pixel = max(0, min(255, int(v_val + 128)))
-                
-                row.append([y_pixel, u_pixel, v_pixel])
-                
+                row.append(pixel_func(r, g, b))
             self.processed_picture.append(row)
             
         self.photo_processed = convert_matrix_to_photo(self.processed_picture)
         self.lbl_processed.config(image=self.photo_processed)
 
-    def apply_ycbcr(self):
-        if self.loaded_picture is None:
-            return
-            
-        height = len(self.loaded_picture)
-        width = len(self.loaded_picture[0])
-        
-        self.processed_picture = []
-        for y_coord in range(height):
-            row = []
-            for x in range(width):
-                r, g, b = self.loaded_picture[y_coord][x]
-                
-                y_val = 0.299 * r + 0.587 * g + 0.114 * b
-                cb_val = -0.1687 * r - 0.3313 * g + 0.498 * b + 128
-                cr_val = 0.498 * r - 0.4187 * g - 0.0813 * b + 128
-                
-                y_pixel = max(0, min(255, int(y_val)))
-                cb_pixel = max(0, min(255, int(cb_val)))
-                cr_pixel = max(0, min(255, int(cr_val)))
-                
-                row.append([y_pixel, cb_pixel, cr_pixel])
-                
-            self.processed_picture.append(row)
-            
-        self.photo_processed = convert_matrix_to_photo(self.processed_picture)
-        self.lbl_processed.config(image=self.photo_processed)
+    def grayscale_pixel(self, r, g, b):
+        gray = int((r + g + b) / 3)
+        return [gray, gray, gray]
+
+    def cmyk_pixel(self, r, g, b):
+        c_val = 1 - (r / 255)
+        m_val = 1 - (g / 255)
+        y_val = 1 - (b / 255)
+        return [int(c_val * 255), int(m_val * 255), int(y_val * 255)]
+
+    def yuv_pixel(self, r, g, b):
+        y_val = 0.3 * r + 0.6 * g + 0.1 * b
+        u_val = 0.74 * (r - y_val) + 0.27 * (b - y_val)
+        v_val = 0.48 * (r - y_val) + 0.41 * (b - y_val)
+        return [
+            max(0, min(255, int(y_val))),
+            max(0, min(255, int(u_val + 128))),
+            max(0, min(255, int(v_val + 128)))
+        ]
+
+    def ycbcr_pixel(self, r, g, b):
+        y_val = 0.299 * r + 0.587 * g + 0.114 * b
+        cb_val = -0.1687 * r - 0.3313 * g + 0.498 * b + 128
+        cr_val = 0.498 * r - 0.4187 * g - 0.0813 * b + 128
+        return [
+            max(0, min(255, int(y_val))),
+            max(0, min(255, int(cb_val))),
+            max(0, min(255, int(cr_val)))
+        ]
 
     def apply_inverse(self):
         if self.loaded_picture is None:
@@ -255,7 +200,6 @@ class ImageProcessingApp:
         self.photo_processed = convert_matrix_to_photo(self.processed_picture)
         self.lbl_processed.config(image=self.photo_processed)
         
-        # Display the 3 channels in a new window
         channels_window = tk.Toplevel(self.root)
         channels_window.title("Inverse Image Channels (R, G, B)")
         
@@ -274,30 +218,11 @@ class ImageProcessingApp:
         self.photo_inv_b = convert_matrix_to_photo(inv_b_matrix)
         lbl_b.config(image=self.photo_inv_b)
 
-    def apply_binarize(self):
-        if self.loaded_picture is None:
-            return
-            
-        height = len(self.loaded_picture)
-        width = len(self.loaded_picture[0])
-        
-        self.processed_picture = []
+    def binarize_pixel(self, r, g, b):
         threshold = 127
-        
-        for y_coord in range(height):
-            row = []
-            for x in range(width):
-                r, g, b = self.loaded_picture[y_coord][x]
-                
-                luma = 0.3 * r + 0.6 * g + 0.1 * b
-                bin_val = 255 if luma > threshold else 0
-                
-                row.append([bin_val, bin_val, bin_val])
-                
-            self.processed_picture.append(row)
-            
-        self.photo_processed = convert_matrix_to_photo(self.processed_picture)
-        self.lbl_processed.config(image=self.photo_processed)
+        luma = 0.3 * r + 0.6 * g + 0.1 * b
+        bin_val = 255 if luma > threshold else 0
+        return [bin_val, bin_val, bin_val]
 
 if __name__ == "__main__":
     root = tk.Tk()
