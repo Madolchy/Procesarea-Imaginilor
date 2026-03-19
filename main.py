@@ -91,8 +91,8 @@ class ImageProcessingApp:
         operations_menu.add_command(label="CMYK", command=self.apply_cmyk)
         operations_menu.add_command(label="YUV", command=self.apply_yuv)
         operations_menu.add_command(label="YCbCr", command=self.apply_ycbcr)
-        operations_menu.add_command(label="Inverse", command=self.apply_inverse)
-        operations_menu.add_command(label="Binarize", command=self.apply_binarize)
+        operations_menu.add_command(label="inverse", command=self.apply_inverse)
+        operations_menu.add_command(label="binarize", command=self.apply_binarize)
         menu_bar.add_cascade(label="Operations", menu=operations_menu)
         
         self.root.config(menu=menu_bar)
@@ -238,7 +238,6 @@ class ImageProcessingApp:
             for x in range(width):
                 r, g, b = self.loaded_picture[y_coord][x]
                 
-                # Inverse
                 ir = 255 - r
                 ig = 255 - g
                 ib = 255 - b
