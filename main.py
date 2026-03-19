@@ -220,8 +220,8 @@ class ImageProcessingApp:
 
     def binarize_pixel(self, r, g, b):
         threshold = 127
-        luma = 0.3 * r + 0.6 * g + 0.1 * b
-        bin_val = 255 if luma > threshold else 0
+        p = self.grayscale_pixel(r, g, b)[0]
+        bin_val = 255 if p > threshold else 0
         return [bin_val, bin_val, bin_val]
 
 if __name__ == "__main__":
