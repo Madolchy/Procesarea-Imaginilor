@@ -50,6 +50,8 @@ def convert_matrix_to_photo(rgb_matrix):
             img.putpixel((x, y), (r, g, b))
     return ImageTk.PhotoImage(img)
 
+
+
 class ImageProcessingApp:
     def __init__(self, root):
         self.root = root
@@ -87,6 +89,10 @@ class ImageProcessingApp:
         operations_menu = tk.Menu(menu_bar, tearoff=0)
         operations_menu.add_command(label="Grayscale", command=self.apply_grayscale)
         operations_menu.add_command(label="CMYK", command=self.apply_cmyk)
+        operations_menu.add_command(label="YUV", command=self.apply_yuv)
+        operations_menu.add_command(label="YCbCr", command=self.apply_ycbcr)
+        operations_menu.add_command(label="Inverse", command=self.apply_inverse)
+        operations_menu.add_command(label="Binarize", command=self.apply_binarize)
         menu_bar.add_cascade(label="Operations", menu=operations_menu)
         
         self.root.config(menu=menu_bar)
@@ -156,7 +162,143 @@ class ImageProcessingApp:
         self.photo_processed = convert_matrix_to_photo(self.processed_picture)
         self.lbl_processed.config(image=self.photo_processed)
 
-    
+    def apply_yuv(self):
+        if self.loaded_picture is None:
+            return
+            
+        height = len(self.loaded_picture)
+        width = len(self.loaded_picture[0])
+        
+        self.processed_picture = []
+        for y_coord in range(height):
+            row = []
+            for x in range(width):
+                r, g, b = self.loaded_picture[y_coord][x]
+                
+                y_val = 0.3 * r + 0.6 * g + 0.1 * b
+                u_val = 0.74 * (r - y_val) + 0.27 * (b - y_val)
+                v_val = 0.48 * (r - y_val) + 0.41 * (b - y_val)
+                
+                y_pixel = max(0, min(255, int(y_val)))
+                u_pixel = max(0, min(255, int(u_val + 128))) 
+                v_pixel = max(0, min(255, int(v_val + 128)))
+                
+                row.append([y_pixel, u_pixel, v_pixel])
+                
+            self.processed_picture.append(row)
+            
+        self.photo_processed = convert_matrix_to_photo(self.processed_picture)
+        self.lbl_processed.config(image=self.photo_processed)
+
+    def apply_ycbcr(self):
+        if self.loaded_picture is None:
+            return
+            
+        height = len(self.loaded_picture)
+        width = len(self.loaded_picture[0])
+        
+        self.processed_picture = []
+        for y_coord in range(height):
+            row = []
+            for x in range(width):
+                r, g, b = self.loaded_picture[y_coord][x]
+                
+                y_val = 0.299 * r + 0.587 * g + 0.114 * b
+                cb_val = -0.1687 * r - 0.3313 * g + 0.498 * b + 128
+                cr_val = 0.498 * r - 0.4187 * g - 0.0813 * b + 128
+                
+                y_pixel = max(0, min(255, int(y_val)))
+                cb_pixel = max(0, min(255, int(cb_val)))
+                cr_pixel = max(0, min(255, int(cr_val)))
+                
+                row.append([y_pixel, cb_pixel, cr_pixel])
+                
+            self.processed_picture.append(row)
+            
+        self.photo_processed = convert_matrix_to_photo(self.processed_picture)
+        self.lbl_processed.config(image=self.photo_processed)
+
+    def apply_inverse(self):
+        if self.loaded_picture is None:
+            return
+            
+        height = len(self.loaded_picture)
+        width = len(self.loaded_picture[0])
+        
+        self.processed_picture = []
+        inv_r_matrix = []
+        inv_g_matrix = []
+        inv_b_matrix = []
+        
+        for y_coord in range(height):
+            row_inv = []
+            row_r = []
+            row_g = []
+            row_b = []
+            for x in range(width):
+                r, g, b = self.loaded_picture[y_coord][x]
+                
+                # Inverse
+                ir = 255 - r
+                ig = 255 - g
+                ib = 255 - b
+                
+                row_inv.append([ir, ig, ib])
+                row_r.append([ir, 0, 0])
+                row_g.append([0, ig, 0])
+                row_b.append([0, 0, ib])
+                
+            self.processed_picture.append(row_inv)
+            inv_r_matrix.append(row_r)
+            inv_g_matrix.append(row_g)
+            inv_b_matrix.append(row_b)
+            
+        self.photo_processed = convert_matrix_to_photo(self.processed_picture)
+        self.lbl_processed.config(image=self.photo_processed)
+        
+        # Display the 3 channels in a new window
+        channels_window = tk.Toplevel(self.root)
+        channels_window.title("Inverse Image Channels (R, G, B)")
+        
+        lbl_r = tk.Label(channels_window)
+        lbl_r.pack(side="left", padx=5, pady=5)
+        self.photo_inv_r = convert_matrix_to_photo(inv_r_matrix)
+        lbl_r.config(image=self.photo_inv_r)
+        
+        lbl_g = tk.Label(channels_window)
+        lbl_g.pack(side="left", padx=5, pady=5)
+        self.photo_inv_g = convert_matrix_to_photo(inv_g_matrix)
+        lbl_g.config(image=self.photo_inv_g)
+        
+        lbl_b = tk.Label(channels_window)
+        lbl_b.pack(side="left", padx=5, pady=5)
+        self.photo_inv_b = convert_matrix_to_photo(inv_b_matrix)
+        lbl_b.config(image=self.photo_inv_b)
+
+    def apply_binarize(self):
+        if self.loaded_picture is None:
+            return
+            
+        height = len(self.loaded_picture)
+        width = len(self.loaded_picture[0])
+        
+        self.processed_picture = []
+        threshold = 127
+        
+        for y_coord in range(height):
+            row = []
+            for x in range(width):
+                r, g, b = self.loaded_picture[y_coord][x]
+                
+                luma = 0.3 * r + 0.6 * g + 0.1 * b
+                bin_val = 255 if luma > threshold else 0
+                
+                row.append([bin_val, bin_val, bin_val])
+                
+            self.processed_picture.append(row)
+            
+        self.photo_processed = convert_matrix_to_photo(self.processed_picture)
+        self.lbl_processed.config(image=self.photo_processed)
 
 if __name__ == "__main__":
     root = tk.Tk()
