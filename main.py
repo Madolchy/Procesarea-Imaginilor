@@ -156,6 +156,8 @@ class ImageProcessingApp:
         self.photo_processed = convert_matrix_to_photo(self.processed_picture)
         self.lbl_processed.config(image=self.photo_processed)
 
+    
+
 if __name__ == "__main__":
     root = tk.Tk()
     app = ImageProcessingApp(root)
