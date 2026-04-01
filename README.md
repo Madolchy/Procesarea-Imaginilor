@@ -24,6 +24,10 @@
    ```bash
    uv sync
    ```
+4. Rularea aplicatiei
+   ``` bash
+   uv run src/main.py
+   ```
 > [!NOTE]
 > Nu este strinct necesar a folosi UV, se pot urmari si pasi clasici de `pip install`, etc...
 
