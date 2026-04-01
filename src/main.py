@@ -4,8 +4,6 @@ import struct
 from PIL import Image, ImageTk
 
 def read_image(file_path): 
-
-
     img = Image.open(file_path)
     
     img = img.convert('RGB')
@@ -36,13 +34,15 @@ def convert_matrix_to_photo(rgb_matrix):
 class ImageProcessingApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Image Processing App")
+        self.root.title("Atome PngShop")
         self.root.geometry("800x450")
         
         self.loaded_picture = None
         self.processed_picture = None
         self.photo_original = None
         self.photo_processed = None
+        
+        self.alpha = 100
         
         self.setup_gui()
         
@@ -67,10 +67,9 @@ class ImageProcessingApp:
         frame_bottom = tk.Frame(self.root)
         frame_bottom.pack(side="bottom", fill="x", pady=10)
         
-        self.effect_slider = tk.Scale(frame_bottom, from_=0, to=100, orient="horizontal", label="")
-        self.effect_slider.set(100)
+        self.effect_slider = tk.Scale(frame_bottom, from_=0, to=100, orient="horizontal", label="", command=self.on_slider_release)
+        self.effect_slider.set(self.alpha)
         self.effect_slider.pack(expand=True, fill="x", padx=20)
-        self.effect_slider.bind("<ButtonRelease-1>", self.on_slider_release)
         
         self.current_operation = None
         
@@ -85,11 +84,11 @@ class ImageProcessingApp:
         operations_menu.add_command(label="CMYK", command=lambda: self.process_pixels(self.cmyk_pixel))
         operations_menu.add_command(label="YUV", command=lambda: self.process_pixels(self.yuv_pixel))
         operations_menu.add_command(label="YCbCr", command=lambda: self.process_pixels(self.ycbcr_pixel))
-        operations_menu.add_command(label="inverse", command=self.apply_inverse)
+        operations_menu.add_command(label="inverse", command=self.apply_inverse_with_channels)
         operations_menu.add_command(label="binarize", command=lambda: self.process_pixels(self.binarize_pixel))
         operations_menu.add_command(label="HSV", command=lambda: self.process_pixels(self.hsv_pixel))
         operations_menu.add_separator()
-        operations_menu.add_command(label="Histograma", command=self.calculate_histogram)
+        operations_menu.add_command(label="Histograma", command=self.real_histogram)
         operations_menu.add_command(label="Moment Ord 1", command=lambda: self.compute_moments(1))
         operations_menu.add_command(label="Moment Ord 2", command=lambda: self.compute_moments(2))
         operations_menu.add_command(label="Covarianta", command=self.compute_covariance)
@@ -120,12 +119,19 @@ class ImageProcessingApp:
             except Exception as e:
                 print(f"Error loading image: {e}")
 
+    def alpha_blending(self, r, g, b, tr, tg, tb, alpha):
+        inverse_alpha = 1 - alpha
+        return [
+            int(r * inverse_alpha + tr * alpha),
+            int(g * inverse_alpha + tg * alpha),
+            int(b * inverse_alpha + tb * alpha)
+        ]
     def process_pixels(self, pixel_func):
         if self.loaded_picture is None:
             return
             
         self.current_operation = lambda: self.process_pixels(pixel_func)
-        alpha = self.effect_slider.get() / 100.0
+        self.alpha = self.effect_slider.get() / 100.0
         
         height = len(self.loaded_picture)
         width = len(self.loaded_picture[0])
@@ -135,22 +141,22 @@ class ImageProcessingApp:
             row = []
             for x in range(width):
                 r, g, b = self.loaded_picture[y_coord][x]
-                res_r, res_g, res_b = pixel_func(r, g, b, alpha)
-                row.append([res_r, res_g, res_b])
+                res_r, res_g, res_b = pixel_func(r, g, b)
+                if not pixel_func == self.binarize_pixel:
+                    blended_rgb = self.alpha_blending(r, g, b, res_r, res_g, res_b, self.alpha)
+                    row.append(blended_rgb)
+                else:
+                    row.append([res_r, res_g, res_b])
             self.processed_picture.append(row)
             
         self.photo_processed = convert_matrix_to_photo(self.processed_picture)
         self.lbl_processed.config(image=self.photo_processed)
 
-    def grayscale_pixel(self, r, g, b, alpha):
+    def grayscale_pixel(self, r, g, b):
         gray = int((r + g + b) / 3)
-        return [
-            int(r * (1 - alpha) + gray * alpha),
-            int(g * (1 - alpha) + gray * alpha),
-            int(b * (1 - alpha) + gray * alpha)
-        ]
+        return [gray, gray, gray]
 
-    def cmyk_pixel(self, r, g, b, alpha):
+    def cmyk_pixel(self, r, g, b):
         c_val = 1 - (r / 255)
         m_val = 1 - (g / 255)
         y_val = 1 - (b / 255)
@@ -158,13 +164,9 @@ class ImageProcessingApp:
         tr = int(c_val * 255)
         tg = int(m_val * 255)
         tb = int(y_val * 255)
-        return [
-            int(r * (1 - alpha) + tr * alpha),
-            int(g * (1 - alpha) + tg * alpha),
-            int(b * (1 - alpha) + tb * alpha)
-        ]
+        return [tr, tg, tb]
 
-    def yuv_pixel(self, r, g, b, alpha):
+    def yuv_pixel(self, r, g, b):
         y_val = 0.3 * r + 0.6 * g + 0.1 * b
         u_val = 0.74 * (r - y_val) + 0.27 * (b - y_val)
         v_val = 0.48 * (r - y_val) + 0.41 * (b - y_val)
@@ -172,13 +174,9 @@ class ImageProcessingApp:
         tr = max(0, min(255, int(y_val)))
         tg = max(0, min(255, int(u_val + 128)))
         tb = max(0, min(255, int(v_val + 128)))
-        return [
-            int(r * (1 - alpha) + tr * alpha),
-            int(g * (1 - alpha) + tg * alpha),
-            int(b * (1 - alpha) + tb * alpha)
-        ]
+        return [tr, tg, tb]
 
-    def ycbcr_pixel(self, r, g, b, alpha):
+    def ycbcr_pixel(self, r, g, b):
         y_val = 0.299 * r + 0.587 * g + 0.114 * b
         cb_val = -0.1687 * r - 0.3313 * g + 0.498 * b + 128
         cr_val = 0.498 * r - 0.4187 * g - 0.0813 * b + 128
@@ -186,57 +184,39 @@ class ImageProcessingApp:
         tr = max(0, min(255, int(y_val)))
         tg = max(0, min(255, int(cb_val)))
         tb = max(0, min(255, int(cr_val)))
-        return [
-            int(r * (1 - alpha) + tr * alpha),
-            int(g * (1 - alpha) + tg * alpha),
-            int(b * (1 - alpha) + tb * alpha)
-        ]
+        return [tr, tg, tb]
 
-    def binarize_pixel(self, r, g, b, alpha):
-        threshold = alpha * 255
+    def binarize_pixel(self, r, g, b):
+        threshold = self.alpha * 255
         p = int((r + g + b) / 3)
         bin_val = 255 if p > threshold else 0
         return [bin_val, bin_val, bin_val]
 
-    def apply_inverse(self):
-        if self.loaded_picture is None:
-            return
-            
-        self.current_operation = self.apply_inverse
-        alpha = self.effect_slider.get() / 100.0
-            
-        height = len(self.loaded_picture)
-        width = len(self.loaded_picture[0])
+    def inverse(self, r, g, b):
+
+        tr, tg, tb = 255 - r, 255 - g, 255 - b
+        return [tr, tg, tb] 
+
+    def apply_inverse_with_channels(self):
+        self.process_pixels(self.inverse)
         
-        self.processed_picture = []
+        self.current_operation = self.apply_inverse_with_channels
+        
         inv_r_matrix, inv_g_matrix, inv_b_matrix = [], [], []
         
-        for y_coord in range(height):
-            row_inv, row_r, row_g, row_b = [], [], [], []
-            for x in range(width):
-                r, g, b = self.loaded_picture[y_coord][x]
-                
-                tr, tg, tb = 255 - r, 255 - g, 255 - b
-                ir = int(r * (1 - alpha) + tr * alpha)
-                ig = int(g * (1 - alpha) + tg * alpha)
-                ib = int(b * (1 - alpha) + tb * alpha)
-                
-                row_inv.append([ir, ig, ib])
-                row_r.append([ir, 0, 0])
-                row_g.append([0, ig, 0])
-                row_b.append([0, 0, ib])
-                
-            self.processed_picture.append(row_inv)
+        for row in self.processed_picture:
+            row_r, row_g, row_b = [], [], []
+            for r, g, b in row:
+                row_r.append([r, 0, 0])
+                row_g.append([0, g, 0])
+                row_b.append([0, 0, b])
             inv_r_matrix.append(row_r)
             inv_g_matrix.append(row_g)
             inv_b_matrix.append(row_b)
-            
-        self.photo_processed = convert_matrix_to_photo(self.processed_picture)
-        self.lbl_processed.config(image=self.photo_processed)
-        
+
         if not hasattr(self, 'channels_window') or not self.channels_window.winfo_exists():
             self.channels_window = tk.Toplevel(self.root)
-            self.channels_window.title("Inverse Image Channels (R, G, B)")
+            self.channels_window.title("Inverse Channels")
             
             self.lbl_r = tk.Label(self.channels_window)
             self.lbl_r.pack(side="left", padx=5, pady=5)
@@ -247,11 +227,13 @@ class ImageProcessingApp:
             
         self.photo_inv_r = convert_matrix_to_photo(inv_r_matrix)
         self.lbl_r.config(image=self.photo_inv_r)
+        
         self.photo_inv_g = convert_matrix_to_photo(inv_g_matrix)
         self.lbl_g.config(image=self.photo_inv_g)
+        
         self.photo_inv_b = convert_matrix_to_photo(inv_b_matrix)
         self.lbl_b.config(image=self.photo_inv_b)
-
+            
     def hsv_pixel(self, r, g, b, alpha):
         r_, g_, b_ = r/255.0, g/255.0, b/255.0
         cmax = max(r_, g_, b_)
@@ -301,19 +283,17 @@ class ImageProcessingApp:
             y1 = 400 - (val / max_val * 380)
             canvas.create_rectangle(x0, y0, x1, y1, fill="blue", outline="")
 
-    def calculate_histogram(self):
-        if self.loaded_picture is None: return
+    def real_histogram(self):
+        hist = [0] * 256 
         h = len(self.loaded_picture)
         w = len(self.loaded_picture[0])
+    
+        for y in range(h):
+            for x in range(w):
+                intensity = self.get_intensity(*self.loaded_picture[y][x])
+                hist[intensity] += 1 
             
-        v = [0] * h
-        for i in range(h):
-            s = 0
-            for j in range(w):
-                s = s + self.get_intensity(*self.loaded_picture[i][j])
-            v[i] = s
-            
-        self.display_bar_chart(v, "Histograma Conform Pseudocod")
+        self.display_bar_chart(hist, "Histograma Reala")
 
     def compute_moments(self, order):
         if self.loaded_picture is None: return
@@ -321,30 +301,33 @@ class ImageProcessingApp:
         w = len(self.loaded_picture[0])
             
         m00 = m10 = m01 = 0
+        threshold = 127
         for y in range(h):
             for x in range(w):
-                I = self.get_intensity(*self.loaded_picture[y][x])
-                m00 += I
-                m10 += x * I
-                m01 += y * I
+                intensity = self.get_intensity(*self.loaded_picture[y][x])
+                if intensity < threshold:
+                    m00 += 1
+                    m10 += x
+                    m01 += y
                 
         if m00 == 0: 
-            print("Imaginea nu contine informatie (M00 = 0).")
+            print("Imaginea nu contine informatie obiectuala (M00 = 0).")
             return
             
         xc, yc = m10 / m00, m01 / m00
         
         if order == 1:
-            print(f"Moment Ord 1: M10={m10}, M01={m01}")
+            print(f"Moment Ord 1: Aria(M00)={m00}, M10={m10}, M01={m01}")
             print(f"Centru de masa: ({xc:.2f}, {yc:.2f})")
         elif order == 2:
             m20 = m02 = m11 = 0
             for y in range(h):
                 for x in range(w):
-                    I = self.get_intensity(*self.loaded_picture[y][x])
-                    m20 += (x ** 2) * I
-                    m02 += (y ** 2) * I
-                    m11 += (x * y) * I
+                    intensity = self.get_intensity(*self.loaded_picture[y][x])
+                    if intensity < threshold:
+                        m20 += x * x
+                        m02 += y * y
+                        m11 += x * y
             print(f"Moment Ord 2: M20={m20}, M02={m02}, M11={m11}")
 
     def compute_covariance(self):
@@ -353,12 +336,14 @@ class ImageProcessingApp:
         w = len(self.loaded_picture[0])
             
         m00 = m10 = m01 = 0
+        threshold = 127
         for y in range(h):
             for x in range(w):
-                I = self.get_intensity(*self.loaded_picture[y][x])
-                m00 += I
-                m10 += x * I
-                m01 += y * I
+                intensity = self.get_intensity(*self.loaded_picture[y][x])
+                if intensity > threshold:
+                    m00 += 1
+                    m10 += x
+                    m01 += y
                 
         if m00 == 0: return
         xc, yc = m10 / m00, m01 / m00
@@ -366,10 +351,11 @@ class ImageProcessingApp:
         mu20 = mu02 = mu11 = 0
         for y in range(h):
             for x in range(w):
-                I = self.get_intensity(*self.loaded_picture[y][x])
-                mu20 += ((x - xc)**2) * I
-                mu02 += ((y - yc)**2) * I
-                mu11 += ((x - xc) * (y - yc)) * I
+                intensity = self.get_intensity(*self.loaded_picture[y][x])
+                if intensity > threshold:
+                    mu20 += (x - xc)**2
+                    mu02 += (y - yc)**2
+                    mu11 += (x - xc) * (y - yc)
                 
         cov20, cov02, cov11 = mu20 / m00, mu02 / m00, mu11 / m00
         print(f"Matricea de Covarianta:\n[{cov20:.2f}, {cov11:.2f}]\n[{cov11:.2f}, {cov02:.2f}]")
