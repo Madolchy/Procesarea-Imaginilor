@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import filedialog
 import struct
 from PIL import Image, ImageTk
+import random
+import math 
 
 def read_image(file_path): 
     img = Image.open(file_path)
@@ -20,6 +22,60 @@ def read_image(file_path):
         pixels.append(row_pixels)
         
     return pixels
+
+def read_bmp_24bit(file_path): 
+    with open(file_path, 'rb') as f: 
+        file_header = f.read(14) 
+        if len(file_header) < 14: 
+            raise ValueError("File too small to be a BMP") 
+
+        signature = file_header[0:2] 
+        if signature != b'BM': 
+            raise ValueError("Not a BMP file (invalid signature)") 
+
+        file_size = struct.unpack('<I', file_header[2:6])[0] 
+        data_offset = struct.unpack('<I', file_header[10:14])[0] 
+
+        info_header = f.read(40) 
+        if len(info_header) < 40: 
+            raise ValueError("Incomplete BMP info header") 
+
+        header_size = struct.unpack('<I', info_header[0:4])[0] 
+        width = struct.unpack('<i', info_header[4:8])[0] 
+        height = struct.unpack('<i', info_header[8:12])[0] 
+        planes = struct.unpack('<H', info_header[12:14])[0] 
+        bit_count = struct.unpack('<H', info_header[14:16])[0] 
+        compression = struct.unpack('<I', info_header[16:20])[0] 
+        image_size = struct.unpack('<I', info_header[20:24])[0] 
+        if bit_count != 24: 
+            raise ValueError(f"Only 24‑bit BMP supported, got {bit_count}‑bit") 
+        if compression != 0:  # BI_RGB 
+            raise ValueError("Only uncompressed BMP supported") 
+
+        bottom_up = height > 0 
+        abs_height = abs(height) 
+        row_size = ((width * 3 + 3) // 4) * 4 
+        f.seek(data_offset) 
+
+        pixels = [] 
+        for _ in range(abs_height): 
+            row_data = f.read(row_size) 
+            if len(row_data) < row_size: 
+                raise ValueError("Unexpected end of file") 
+
+            row_pixels = [] 
+            for x in range(width): 
+                b = row_data[x*3] 
+                g = row_data[x*3 + 1] 
+                r = row_data[x*3 + 2] 
+                row_pixels.append([r, g, b]) 
+
+            pixels.append(row_pixels) 
+
+        if bottom_up: 
+            pixels.reverse() 
+
+        return pixels  
     
 def convert_matrix_to_photo(rgb_matrix):
     height = len(rgb_matrix)
@@ -76,7 +132,8 @@ class ImageProcessingApp:
         menu_bar = tk.Menu(self.root)
         
         file_menu = tk.Menu(menu_bar, tearoff=0)
-        file_menu.add_command(label="Open", command=self.open_image)
+        file_menu.add_command(label="Open", command=lambda: self.open_image(manual=False))
+        file_menu.add_command(label="Open 24bit BMP", command=lambda: self.open_image(manual=True))
         menu_bar.add_cascade(label="File", menu=file_menu)
         
         operations_menu = tk.Menu(menu_bar, tearoff=0)
@@ -93,6 +150,10 @@ class ImageProcessingApp:
         operations_menu.add_command(label="Moment Ord 2", command=lambda: self.compute_moments(2))
         operations_menu.add_command(label="Covarianta", command=self.compute_covariance)
         operations_menu.add_command(label="Proiectii", command=self.compute_projections)
+        operations_menu.add_separator()
+        operations_menu.add_command(label="Etichetare (Labeling)", command=self.etichetare)
+        operations_menu.add_command(label="Selectie & Orientare (0)", command=self.selectie_obiect)
+        operations_menu.add_command(label="Selectie & Orientare (1)", command=self.selectie_obiect_global)
         menu_bar.add_cascade(label="Operations", menu=operations_menu)
         
         self.root.config(menu=menu_bar)
@@ -101,7 +162,7 @@ class ImageProcessingApp:
         if self.current_operation:
             self.current_operation()
 
-    def open_image(self):
+    def open_image(self, manual = False):
         file_path = filedialog.askopenfilename( 
             title="Open BMP Image", 
             filetypes=[("BMP files", "*.bmp")] 
@@ -109,7 +170,10 @@ class ImageProcessingApp:
         
         if file_path:
             try:
-                self.loaded_picture = read_image(file_path)
+                if not manual:
+                    self.loaded_picture = read_image(file_path)
+                else:
+                    self.loaded_picture = read_bmp_24bit(file_path)
                 self.processed_picture = None
                 self.photo_processed = None
                 
@@ -376,6 +440,241 @@ class ImageProcessingApp:
                 
         self.display_bar_chart(proj_h, "Proiectie Orizontala")
         self.display_bar_chart(proj_v, "Proiectie Verticala")
+
+    def get_binary_matrix(self, threshold=127):
+        height = len(self.loaded_picture)
+        width = len(self.loaded_picture[0])
+        src_bin = []
+        
+        for i in range(height):
+            row = []
+            for j in range(width):
+                r, g, b = self.loaded_picture[i][j]
+                intensity = self.get_intensity(r, g, b)
+                if intensity < threshold:
+                    row.append(0)
+                else:
+                    row.append(255)
+            src_bin.append(row)
+            
+        return src_bin
+
+    def etichetare(self):
+        if self.loaded_picture is None:
+            return
+
+
+        height = len(self.loaded_picture)
+        width = len(self.loaded_picture[0])
+        
+        src_bin = self.get_binary_matrix()
+
+        label = 0
+        labels = [[0 for j in range(width)] for i in range(height)]
+
+        for i in range(height):
+            for j in range(width):
+                
+                col = src_bin[i][j]
+                
+                if col == 0 and labels[i][j] == 0:
+                    label += 1
+                    queue = []
+                    labels[i][j] = label
+                    queue.append([i, j])
+                    
+                    while len(queue) > 0:
+                        q = queue.pop(0)
+                        q0 = q[0]
+                        q1 = q[1]
+                        
+                        for k in range(-1, 2):
+                            for m in range(-1, 2):
+                                if (q0 + k >= 0 and q0 + k < height) and (q1 + m >= 0 and q1 + m < width):
+                                    try:
+                                        ncol = src_bin[q0 + k][q1 + m]
+                                        if ncol == 0 and labels[q0 + k][q1 + m] == 0:
+                                            labels[q0 + k][q1 + m] = label
+                                            queue.append([q0 + k, q1 + m])
+                                    except Exception as ex:
+                                        pass
+
+        self.label_colors = {0: [255, 255, 255]} # fundal
+        for l in range(1, label + 1):
+            self.label_colors[l] = [random.randint(50, 255), random.randint(50, 255), random.randint(50, 255)]
+
+        self.labels = labels
+        self.max_label = label
+
+        self.processed_picture = []
+        for i in range(height):
+            row = []
+            for j in range(width):
+                row.append(self.label_colors[labels[i][j]])
+            self.processed_picture.append(row)
+
+        self.photo_processed = convert_matrix_to_photo(self.processed_picture)
+        self.lbl_processed.config(image=self.photo_processed)
+        print("Etichetare finalizata!")
+
+    def calculateObjectOrientation(self, image_matrix, current_label):
+        width = len(image_matrix[0])
+        height = len(image_matrix)
+
+        gradientX = [[0 for _ in range(height)] for _ in range(width)]
+        gradientY = [[0 for _ in range(height)] for _ in range(width)]
+
+        def getRGB_gray(x, y):
+            r, g, b = image_matrix[y][x]
+            return int((r + g + b) / 3)
+
+        for y in range(height):
+            for x in range(width):
+                if x == 0 or y == 0 or x == width - 1 or y == height - 1:
+                    gradientX[x][y] = 0
+                    gradientY[x][y] = 0
+                    continue
+                
+                gradientX[x][y] = getRGB_gray(x + 1, y - 1) + (2 * getRGB_gray(x + 1, y)) + getRGB_gray(x + 1, y + 1) - \
+                                  getRGB_gray(x - 1, y - 1) - (2 * getRGB_gray(x - 1, y)) - getRGB_gray(x - 1, y + 1)
+                
+                gradientY[x][y] = getRGB_gray(x - 1, y + 1) + (2 * getRGB_gray(x, y + 1)) + getRGB_gray(x + 1, y + 1) - \
+                                  getRGB_gray(x - 1, y - 1) - (2 * getRGB_gray(x, y - 1)) - getRGB_gray(x + 1, y - 1)
+
+        maxGradientMagnitude = 0
+        orientation = 0
+        
+        for y in range(height):
+            for x in range(width):
+                if self.labels[y][x] == current_label:
+                    magnitude = math.sqrt(gradientX[x][y] * gradientX[x][y] + gradientY[x][y] * gradientY[x][y])
+                    
+                    if magnitude > maxGradientMagnitude:
+                        maxGradientMagnitude = magnitude
+                        maxGradientMagnitude = magnitude
+                        orientation = math.atan2(gradientY[x][y], gradientX[x][y])
+        
+        return orientation
+
+    def selectie_obiect(self):
+        from tkinter import simpledialog
+        if not hasattr(self, 'labels'):
+            print("Va rog faceti etichetarea prima data.")
+            return
+
+        label_id = simpledialog.askinteger("Selectie", "Introduceti eticheta obiectului:", parent=self.root)
+        if label_id is None or label_id < 1 or label_id > self.max_label:
+            return
+
+        height = len(self.loaded_picture)
+        width = len(self.loaded_picture[0])
+
+        self.processed_picture = []
+        for i in range(height):
+            row = []
+            for j in range(width):
+                if self.labels[i][j] == label_id:
+                    row.append(self.label_colors[label_id])
+                else:
+                    g = int(sum(self.loaded_picture[i][j]) / 3)
+                    row.append([g, g, g])
+            self.processed_picture.append(row)
+
+        self.photo_processed = convert_matrix_to_photo(self.processed_picture)
+        self.lbl_processed.config(image=self.photo_processed)
+
+        orientation = self.calculateObjectOrientation(self.loaded_picture, label_id)
+        print(f"Obiectul cu eticheta {label_id} are orientarea: {math.degrees(orientation)} grade")
+
+    def calculateObjectOrientation_Global(self, image_matrix, current_label):
+        width = len(image_matrix[0])
+        height = len(image_matrix)
+
+        gradientX = [[0 for _ in range(height)] for _ in range(width)]
+        gradientY = [[0 for _ in range(height)] for _ in range(width)]
+
+        for y in range(height):
+            for x in range(width):
+                if x == 0 or y == 0 or x == width - 1 or y == height - 1:
+                    gradientX[x][y] = 0
+                    gradientY[x][y] = 0
+                    continue
+                
+                # Matricele de vecinatate folosind get_intensity
+                p11 = self.get_intensity(*image_matrix[y-1][x-1])
+                p12 = self.get_intensity(*image_matrix[y-1][x])
+                p13 = self.get_intensity(*image_matrix[y-1][x+1])
+                
+                p21 = self.get_intensity(*image_matrix[y][x-1])
+                p23 = self.get_intensity(*image_matrix[y][x+1])
+                
+                p31 = self.get_intensity(*image_matrix[y+1][x-1])
+                p32 = self.get_intensity(*image_matrix[y+1][x])
+                p33 = self.get_intensity(*image_matrix[y+1][x+1])
+                
+                # Sobel gradients
+                gx = (p13 + 2*p23 + p33) - (p11 + 2*p21 + p31)
+                gy = (p31 + 2*p32 + p33) - (p11 + 2*p12 + p13)
+
+                gradientX[x][y] = gx
+                gradientY[x][y] = gy
+
+        sum_xx = 0
+        sum_yy = 0
+        sum_xy = 0
+        
+        for y in range(height):
+            for x in range(width):
+                if self.labels[y][x] == current_label:
+                    gx = gradientX[x][y]
+                    gy = gradientY[x][y]
+                    
+                    # Tensor de structura pentru orientarea globala (suma)
+                    sum_xx += gx * gx
+                    sum_yy += gy * gy
+                    sum_xy += gx * gy
+        
+        if sum_xx == 0 and sum_yy == 0:
+            return 0
+            
+        theta = 0.5 * math.atan2(2 * sum_xy, sum_xx - sum_yy)
+        orientation = theta + (math.pi / 2)
+        
+        if orientation > math.pi / 2:
+            orientation -= math.pi
+            
+        return orientation
+
+    def selectie_obiect_global(self):
+        from tkinter import simpledialog
+        if not hasattr(self, 'labels'):
+            print("Va rog faceti etichetarea prima data.")
+            return
+
+        label_id = simpledialog.askinteger("Selectie", "Introduceti eticheta obiectului:", parent=self.root)
+        if label_id is None or label_id < 1 or label_id > self.max_label:
+            return
+
+        height = len(self.loaded_picture)
+        width = len(self.loaded_picture[0])
+
+        self.processed_picture = []
+        for i in range(height):
+            row = []
+            for j in range(width):
+                if self.labels[i][j] == label_id:
+                    row.append(self.label_colors[label_id])
+                else:
+                    g = int(sum(self.loaded_picture[i][j]) / 3)
+                    row.append([g, g, g])
+            self.processed_picture.append(row)
+
+        self.photo_processed = convert_matrix_to_photo(self.processed_picture)
+        self.lbl_processed.config(image=self.photo_processed)
+
+        orientation = self.calculateObjectOrientation_Global(self.loaded_picture, label_id)
+        import math
+        print(f"Obiectul cu eticheta {label_id} are orientarea: {math.degrees(orientation):.2f} grade")
 
 if __name__ == "__main__":
     root = tk.Tk()
