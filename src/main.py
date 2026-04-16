@@ -1,5 +1,6 @@
+from image_modifiers import eroziune
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, simpledialog
 import struct
 from PIL import Image, ImageTk
 from image_reader import read_bmp_24bit, read_image
@@ -8,7 +9,6 @@ from image_modifiers import *
 from models import RGB
 import random
 import math 
-
 
 def convert_matrix_to_photo(rgb_matrix):
     height = len(rgb_matrix)
@@ -80,12 +80,18 @@ class ImageProcessingApp:
         operations_menu.add_command(label="Binarize", command=lambda: self.execute_per_pixel(binarize_pixel))
         operations_menu.add_separator()
         operations_menu.add_command(label="Histograma", command=lambda: self.execute_with_graph(calculate_histogram))
+        operations_menu.add_command(label="Egalizare Histograma", command=lambda: self.execute_with_display(equalize_histogram))
+        operations_menu.add_separator()
+        operations_menu.add_command(label="Dilatare", command=lambda: self.execute_repeated(dilatare))
+        operations_menu.add_command(label="Eroziune", command=lambda: self.execute_repeated(eroziune))
+        operations_menu.add_command(label="Deschidere", command=lambda: self.display(self.chain_execute(dilatare, eroziune)))
+        operations_menu.add_command(label="Inchidere", command=lambda: self.display(self.chain_execute(eroziune, dilatare)))
         operations_menu.add_command(label="Moment Ord 1", command=lambda: self.execute_with_display(display_first_order))
         operations_menu.add_command(label="Moment Ord 2", command=lambda: self.execute(compute_second_order))
         operations_menu.add_command(label="Covarianta", command=lambda: self.execute(compute_covariance))
         operations_menu.add_command(label="Proiectii", command=lambda: self.execute(compute_projections))
         operations_menu.add_separator()
-        operations_menu.add_command(label="Etichetare (Labeling)", command=lambda: self.execute_with_display    (etichetare))
+        operations_menu.add_command(label="Etichetare (Labeling)", command=lambda: self.execute_with_display(etichetare))
         operations_menu.add_command(label="Selectie & Orientare (0)", command=self.selectie_obiect)
         operations_menu.add_command(label="Selectie & Orientare (1)", command=self.selectie_obiect_global)
         menu_bar.add_cascade(label="Operations", menu=operations_menu)
@@ -95,6 +101,14 @@ class ImageProcessingApp:
     def on_slider_release(self, event):
         if self.current_operation:
             self.current_operation()
+
+    def get_dimensions(self):
+        if self.loaded_picture is None:
+            raise ValueError("No image provided")
+
+        h = len(self.loaded_picture)
+        w = len(self.loaded_picture[0])
+        return (h, w)
 
     def open_image(self, manual = False):
         file_path = filedialog.askopenfilename( 
@@ -117,15 +131,22 @@ class ImageProcessingApp:
             except Exception as e:
                 print(f"Error loading image: {e}")
 
-    def execute(self, func, with_graph = False):
-        if self.loaded_picture is None:
-            print("No image loaded")
-            return
-    
-        h = len(self.loaded_picture)
-        w = len(self.loaded_picture[0])
+    def execute(self, func, processed = None):
+        if processed is None:
+            processed = self.loaded_picture
+            
+        h, w = self.get_dimensions()
         
-        return func(self.loaded_picture, h, w)
+        return func(processed, h, w)
+    
+    def chain_execute(self, *funcs):
+        h, w = self.get_dimensions()
+
+        image = self.loaded_picture
+        for func in funcs:
+            image = self.execute(func, processed=image)
+        
+        return image
         
     def execute_with_graph(self, func):
         result = self.execute(func)
@@ -134,6 +155,17 @@ class ImageProcessingApp:
     def execute_with_display(self, func):
         result = self.execute(func)
         self.display(result)
+
+    def execute_repeated(self, func):
+        n = simpledialog.askinteger("Repetari", "Numarul de repetari:", parent=self.root, minvalue=1)
+        if n is None:
+            raise ValueError("Repetari invalide")
+
+        result = self.execute(func)
+        for _ in range(n - 1):
+            result = self.execute(func, result)
+
+        self.display(result)
         
     def display(self, result):
         self.processed_picture = result
@@ -141,12 +173,7 @@ class ImageProcessingApp:
         self.lbl_processed.config(image=self.photo_processed)
 
     def execute_per_pixel(self, func):
-        if self.loaded_picture is None:
-            print("No image loaded")
-            return
-        
-        h = len(self.loaded_picture)
-        w = len(self.loaded_picture[0])
+        h, w = self.get_dimensions()
         
         processed_pic = []
         for y in range(h):

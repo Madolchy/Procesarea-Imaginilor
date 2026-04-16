@@ -15,6 +15,66 @@ def calculate_histogram(image, h, w):
     return hist
 
 
+def equalize_histogram(image, h, w):
+    histogram = calculate_histogram(image, h, w)
+
+    hc = [0] * 256
+    hc[0] = histogram[0]
+    for i in range(1, 256):
+        hc[i] = hc[i - 1] + histogram[i]
+
+    result = []
+    for i in range(h):
+        row = []
+        for j in range(w):
+            nivel = image[i][j].get_intensity()
+            nivel_nou = int((hc[nivel] - hc[0]) * 255 / (w * h - hc[0]))
+            row.append(RGB(nivel_nou, nivel_nou, nivel_nou))
+        result.append(row)
+
+    return result
+
+
+def eroziune(image, h, w):
+    src_bin = get_binary_matrix(image, h, w)
+
+    result = []
+    for i in range(h):
+        row = []
+        for j in range(w):
+            val = 255
+            for k in range(-1, 2):
+                for m in range(-1, 2):
+                    if 0 <= i + k < h and 0 <= j + m < w:
+                        if src_bin[i + k][j + m] == 0:
+                            val = 0
+            row.append(RGB(val, val, val))
+        result.append(row)
+
+    return result
+
+
+def dilatare(image, h, w):
+    src_bin = get_binary_matrix(image, h, w)
+
+    result = []
+    for i in range(h):
+        row = []
+        for j in range(w):
+            val = 0
+            for k in range(-1, 2):
+                for m in range(-1, 2):
+                    if 0 <= i + k < h and 0 <= j + m < w:
+                        if src_bin[i + k][j + m] == 255:
+                            val = 255
+                    else:
+                        val = 255
+            row.append(RGB(val, val, val))
+        result.append(row)
+
+    return result
+
+
 def compute_first_order( image:list[RGB], h, w, threshold = 127):
     m00 = m10 = m01 = 0
     
